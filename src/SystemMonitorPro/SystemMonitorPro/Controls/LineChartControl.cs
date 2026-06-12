@@ -1,13 +1,14 @@
-﻿using SystemMonitorPro.Helpers;
+﻿using System.Drawing.Drawing2D;
+using SystemMonitorPro.Helpers;
 
 namespace SystemMonitorPro.Controls
 {
-    
     public class LineChartControl : Control
     {
-        
-        private readonly int _maxPoints = 60;    
-        private readonly Queue<float> _values = new();
+        private const int MaxPoints = 60;
+
+        private readonly List<float> _values = new();
+
         private Color _lineColor = ThemeColors.CpuChart;
         private string _label = "CPU";
         private float _maxValue = 100f;
@@ -15,113 +16,159 @@ namespace SystemMonitorPro.Controls
         public Color LineColor
         {
             get => _lineColor;
-            set { _lineColor = value; Invalidate(); }
+            set
+            {
+                _lineColor = value;
+                Invalidate();
+            }
         }
 
         public string ChartLabel
         {
             get => _label;
-            set { _label = value; Invalidate(); }
+            set
+            {
+                _label = value;
+                Invalidate();
+            }
         }
 
         public float MaxValue
         {
             get => _maxValue;
-            set { _maxValue = value; Invalidate(); }
+            set
+            {
+                _maxValue = value;
+                Invalidate();
+            }
         }
 
         public LineChartControl()
         {
-            
-            this.DoubleBuffered = true;
-            this.SetStyle(
+            DoubleBuffered = true;
+
+            SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.UserPaint |
-                ControlStyles.OptimizedDoubleBuffer, true);
+                ControlStyles.ResizeRedraw |
+                ControlStyles.OptimizedDoubleBuffer,
+                true);
 
-            this.BackColor = ThemeColors.Surface;
+            BackColor = ThemeColors.Surface;
+
+            
+            for (int i = 0; i < MaxPoints; i++)
+                _values.Add(0);
         }
 
-        
         public void PushValue(float value)
         {
-            if (_values.Count >= _maxPoints)
-                _values.Dequeue();
+            value = Math.Clamp(value, 0f, _maxValue);
 
-            _values.Enqueue(Math.Clamp(value, 0f, _maxValue));
-            Invalidate(); 
+            _values.RemoveAt(0);
+            _values.Add(value);
+
+            Invalidate();
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            var g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            int w = this.Width;
-            int h = this.Height;
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            
+            int w = Width;
+            int h = Height;
+
+            if (w <= 0 || h <= 0) return;
+
             g.Clear(ThemeColors.Surface);
 
-            
-            using var gridPen = new Pen(ThemeColors.Border, 1f);
-            gridPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
-            for (int i = 1; i <= 4; i++)
-            {
-                int y = (int)(h * i / 4f);
-                g.DrawLine(gridPen, 0, y, w, y);
-            }
+            int topPadding = 45;
+            int bottomPadding = 28;
+            int chartHeight = h - topPadding - bottomPadding;
 
             
-            var points = _values.ToArray();
-            if (points.Length >= 2)
+            using (Pen gridPen = new Pen(ThemeColors.Border))
             {
-                float stepX = (float)w / (_maxPoints - 1);
+                gridPen.DashStyle = DashStyle.Dash;
 
-                
-                var fillPoints = new List<PointF>();
-                fillPoints.Add(new PointF(0, h)); 
-
-                for (int i = 0; i < points.Length; i++)
+                for (int i = 1; i <= 4; i++)
                 {
-                    float x = (i + (_maxPoints - points.Length)) * stepX;
-                    float y = h - (points[i] / _maxValue * (h - 20));
-                    fillPoints.Add(new PointF(x, y));
+                    int y = topPadding + chartHeight * i / 4;
+                    g.DrawLine(gridPen, 0, y, w, y);
                 }
-
-                fillPoints.Add(new PointF(fillPoints[^1].X, h)); 
-
-                using var fillBrush = new SolidBrush(
-                    Color.FromArgb(40, _lineColor));
-                g.FillPolygon(fillBrush, fillPoints.ToArray());
-
-                
-                var linePoints = fillPoints
-                    .Skip(1).Take(points.Length).ToArray();
-
-                using var linePen = new Pen(_lineColor, 2f);
-                g.DrawLines(linePen, linePoints);
             }
 
             
-            float current = points.Length > 0 ? points[^1] : 0f;
-            string valueText = _label == "RAM"
-                ? $"{current:F1} GB"
-                : $"{current:F0}%";
+            float stepX = (float)(w - 1) / (MaxPoints - 1);
 
-            using var valueBrush = new SolidBrush(ThemeColors.TextPrimary);
-            using var valueFont = new Font("Segoe UI", 18f, FontStyle.Bold);
-            g.DrawString(valueText, valueFont, valueBrush, new PointF(8, 6));
+            List<PointF> linePoints = new();
+
+            for (int i = 0; i < MaxPoints; i++)
+            {
+                float x = i * stepX;
+
+                float y = topPadding + chartHeight - (_values[i] / _maxValue) * chartHeight;
+                y = Math.Clamp(y, topPadding, topPadding + chartHeight);
+
+                linePoints.Add(new PointF(x, y));
+            }
 
             
-            using var labelBrush = new SolidBrush(ThemeColors.TextSecondary);
-            using var labelFont = new Font("Segoe UI", 9f);
-            g.DrawString(_label, labelFont, labelBrush, new PointF(8, h - 20));
+            List<PointF> polygon = new();
+            polygon.Add(new PointF(0, h - bottomPadding));
+            polygon.AddRange(linePoints);
+            polygon.Add(new PointF(w, h - bottomPadding));
+
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(40, _lineColor)))
+            {
+                g.FillPolygon(brush, polygon.ToArray());
+            }
+
+           
+            using (Pen linePen = new Pen(_lineColor, 2f))
+            {
+                g.DrawLines(linePen, linePoints.ToArray());
+            }
 
             
-            using var borderPen = new Pen(ThemeColors.Border, 1f);
-            g.DrawRectangle(borderPen, 0, 0, w - 1, h - 1);
+            float current = _values[^1];
+
+            string valueText;
+
+            if (_label == "RAM")
+                valueText = $"{current:F1} GB";
+            else if (_label.Contains("Disk"))
+                valueText = $"{current:F1}";
+            else
+                valueText = $"{current:F0}%";
+
+            using (Font valueFont = new Font("Segoe UI", 18, FontStyle.Bold))
+            using (Brush valueBrush = new SolidBrush(ThemeColors.TextPrimary))
+            {
+                g.DrawString(valueText, valueFont, valueBrush, 10, 8);
+            }
+
+            
+            using (Font labelFont = new Font("Segoe UI", 9))
+            using (Brush labelBrush = new SolidBrush(ThemeColors.TextSecondary))
+            {
+                g.DrawString(_label, labelFont, labelBrush, 10, h - 20);
+            }
+
+            
+            using (Pen borderPen = new Pen(ThemeColors.Border))
+            {
+                g.DrawRectangle(borderPen, 0, 0, w - 1, h - 1);
+            }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            Invalidate();
         }
     }
 }

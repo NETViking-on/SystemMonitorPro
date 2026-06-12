@@ -5,41 +5,64 @@ namespace SystemMonitorPro
 {
     public partial class MainForm : Form
     {
-        
         [DllImport("user32.dll")]
         private static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
-
         [DllImport("user32.dll")]
         private static extern bool ReleaseCapture();
 
         private const int WM_NCLBUTTONDOWN = 0xA1;
         private const int HT_CAPTION = 0x2;
 
-       
         private Panel _titleBar = null!;
         private Panel _navPanel = null!;
         private Panel _contentPanel = null!;
 
-       
         private Button _btnDashboard = null!;
         private Button _btnProcesses = null!;
         private Button _btnFiles = null!;
         private Button _btnDisk = null!;
 
-        
         private Button _btnClose = null!;
         private Button _btnMaximize = null!;
         private Button _btnMinimize = null!;
 
+        private Button? _activeTab;
+
         public MainForm()
         {
             InitializeComponent();
+
+            AutoScaleMode = AutoScaleMode.Dpi;
+            DoubleBuffered = true;
+
             BuildUI();
+
+            this.Resize += MainForm_Resize;
+            this.Shown += MainForm_Shown;
+        }
+
+        private void MainForm_Shown(object? sender, EventArgs e)
+        {
+            SelectTab(_btnDashboard);
+        }
+
+        private void MainForm_Resize(object? sender, EventArgs e)
+        {
+            if (_contentPanel != null && _contentPanel.Controls.Count > 0)
+            {
+                foreach (Control c in _contentPanel.Controls)
+                {
+                    if (c is UserControl uc)
+                    {
+                        uc.Invalidate();
+                        uc.PerformLayout();
+                    }
+                }
+            }
         }
 
         private void BuildUI()
         {
-           
             this.Text = "System Monitor Pro";
             this.Size = new Size(1200, 750);
             this.MinimumSize = new Size(900, 600);
@@ -47,17 +70,12 @@ namespace SystemMonitorPro
             this.BackColor = ThemeColors.Background;
             this.ForeColor = ThemeColors.TextPrimary;
             this.FormBorderStyle = FormBorderStyle.None;
-            this.DoubleBuffered = true;
 
             BuildTitleBar();
             BuildNavPanel();
             BuildContentPanel();
-
-            
-            SelectTab(_btnDashboard);
         }
 
-        
         private void BuildTitleBar()
         {
             _titleBar = new Panel
@@ -67,61 +85,46 @@ namespace SystemMonitorPro
                 BackColor = ThemeColors.Surface,
             };
 
-            
             var lblTitle = new Label
             {
-                Text = "⬡  System Monitor Pro",
+                Text = "◈  System Monitor Pro",
                 ForeColor = ThemeColors.TextPrimary,
-                Font = new Font("Segoe UI", 10f, FontStyle.Regular),
+                Font = new Font("Segoe UI", 10f),
                 AutoSize = true,
                 Location = new Point(12, 10),
             };
 
-            
             _btnClose = MakeTitleButton("✕", Color.FromArgb(196, 43, 28));
-            _btnClose.Click += (s, e) => Application.Exit();
-
-            
             _btnMaximize = MakeTitleButton("□", ThemeColors.SurfaceLight);
+            _btnMinimize = MakeTitleButton("─", ThemeColors.SurfaceLight);
+
+            _btnClose.Click += (s, e) => Application.Exit();
             _btnMaximize.Click += (s, e) =>
                 this.WindowState = this.WindowState == FormWindowState.Maximized
-                    ? FormWindowState.Normal
-                    : FormWindowState.Maximized;
-
-            
-            _btnMinimize = MakeTitleButton("─", ThemeColors.SurfaceLight);
+                    ? FormWindowState.Normal : FormWindowState.Maximized;
             _btnMinimize.Click += (s, e) => this.WindowState = FormWindowState.Minimized;
 
-            
-            _titleBar.Resize += (s, e) =>
+            void PositionButtons()
             {
                 _btnClose.Location = new Point(_titleBar.Width - 40, 0);
                 _btnMaximize.Location = new Point(_titleBar.Width - 80, 0);
                 _btnMinimize.Location = new Point(_titleBar.Width - 120, 0);
-            };
+            }
 
-           
-            _titleBar.MouseDown += (s, e) =>
+            _titleBar.Resize += (s, e) => PositionButtons();
+            this.Shown += (s, e) => PositionButtons();
+
+            void StartDrag(object? s, MouseEventArgs e)
             {
                 if (e.Button == MouseButtons.Left)
-                {
-                    ReleaseCapture();
-                    SendMessage(this.Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
-                }
-            };
-            lblTitle.MouseDown += (s, e) =>
-            {
-                if (e.Button == MouseButtons.Left)
-                {
-                    ReleaseCapture();
-                    SendMessage(this.Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
-                }
-            };
+                { ReleaseCapture(); SendMessage(this.Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0); }
+            }
+
+            _titleBar.MouseDown += StartDrag;
+            lblTitle.MouseDown += StartDrag;
 
             _titleBar.Controls.AddRange(new Control[]
-            {
-                lblTitle, _btnClose, _btnMaximize, _btnMinimize
-            });
+                { lblTitle, _btnClose, _btnMaximize, _btnMinimize });
 
             this.Controls.Add(_titleBar);
         }
@@ -145,36 +148,32 @@ namespace SystemMonitorPro
             return btn;
         }
 
-        
         private void BuildNavPanel()
         {
             _navPanel = new Panel
             {
-                Width = 200,
+                Width = 180,
                 Dock = DockStyle.Left,
                 BackColor = ThemeColors.Surface,
-                Padding = new Padding(0, 8, 0, 0),
             };
 
-            _btnDashboard = MakeNavButton("📊  Дашборд", 0);
-            _btnProcesses = MakeNavButton("⚙️  Процессы", 1);
-            _btnFiles = MakeNavButton("📁  Файлы", 2);
-            _btnDisk = MakeNavButton("💾  Диск", 3);
+            _btnDisk = MakeNavButton("💾  Диск");
+            _btnFiles = MakeNavButton("📁  Файлы");
+            _btnProcesses = MakeNavButton("⚙️  Процессы");
+            _btnDashboard = MakeNavButton("📊  Дашборд");
+
+            _navPanel.Controls.AddRange(new Control[]
+                { _btnDisk, _btnFiles, _btnProcesses, _btnDashboard });
 
             _btnDashboard.Click += (s, e) => SelectTab(_btnDashboard);
             _btnProcesses.Click += (s, e) => SelectTab(_btnProcesses);
             _btnFiles.Click += (s, e) => SelectTab(_btnFiles);
             _btnDisk.Click += (s, e) => SelectTab(_btnDisk);
 
-            _navPanel.Controls.AddRange(new Control[]
-            {
-                _btnDashboard, _btnProcesses, _btnFiles, _btnDisk
-            });
-
             this.Controls.Add(_navPanel);
         }
 
-        private Button MakeNavButton(string text, int index)
+        private Button MakeNavButton(string text)
         {
             var btn = new Button
             {
@@ -192,70 +191,66 @@ namespace SystemMonitorPro
             };
             btn.FlatAppearance.BorderSize = 0;
             btn.FlatAppearance.MouseOverBackColor = ThemeColors.SurfaceLight;
-
-            
-            _navPanel?.Controls.Add(btn);
-
             return btn;
         }
 
-       
         private void BuildContentPanel()
         {
             _contentPanel = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = ThemeColors.Background,
-                Padding = new Padding(20),
             };
-
             this.Controls.Add(_contentPanel);
         }
 
-        
-        private Button? _activeTab;
-
         private void SelectTab(Button tab)
         {
-            
             if (_activeTab != null)
             {
                 _activeTab.BackColor = ThemeColors.Surface;
                 _activeTab.ForeColor = ThemeColors.TextSecondary;
             }
 
-            
             tab.BackColor = ThemeColors.SurfaceLight;
             tab.ForeColor = ThemeColors.TextPrimary;
             _activeTab = tab;
 
-            
-            _contentPanel.Controls.Clear();
-
-            
-            var lbl = new Label
+            if (_contentPanel.Controls.Count > 0)
             {
-                Text = tab.Text.Trim() + " — в разработке",
-                ForeColor = ThemeColors.TextSecondary,
-                Font = new Font("Segoe UI", 14f),
-                AutoSize = true,
-                Location = new Point(20, 20),
-            };
-            _contentPanel.Controls.Add(lbl);
+                foreach (Control c in _contentPanel.Controls)
+                {
+                    c.Dispose();
+                }
+                _contentPanel.Controls.Clear();
+            }
+
+            Control view;
+            if (tab == _btnDashboard)
+            {
+                view = new Views.DashboardView();
+                view.Dock = DockStyle.Fill;
+            }
+            else
+            {
+                view = new Label
+                {
+                    Text = tab.Text.Trim() + " — в разработке",
+                    ForeColor = ThemeColors.TextSecondary,
+                    Font = new Font("Segoe UI", 14f),
+                    AutoSize = true,
+                    Location = new Point(20, 20),
+                };
+            }
+
+            _contentPanel.Controls.Add(view);
+            _contentPanel.Invalidate();
+            _contentPanel.PerformLayout();
         }
 
-       
         protected override void WndProc(ref Message m)
         {
             const int WM_NCHITTEST = 0x84;
-            const int HTLEFT = 10;
-            const int HTRIGHT = 11;
-            const int HTTOP = 12;
-            const int HTBOTTOM = 15;
-            const int HTTOPLEFT = 13;
-            const int HTTOPRIGHT = 14;
-            const int HTBOTTOMLEFT = 16;
-            const int HTBOTTOMRIGHT = 17;
             const int border = 6;
 
             if (m.Msg == WM_NCHITTEST && this.WindowState == FormWindowState.Normal)
@@ -263,14 +258,14 @@ namespace SystemMonitorPro
                 var pos = PointToClient(new Point(m.LParam.ToInt32()));
                 int x = pos.X, y = pos.Y, w = this.Width, h = this.Height;
 
-                if (x < border && y < border) { m.Result = (IntPtr)HTTOPLEFT; return; }
-                if (x > w - border && y < border) { m.Result = (IntPtr)HTTOPRIGHT; return; }
-                if (x < border && y > h - border) { m.Result = (IntPtr)HTBOTTOMLEFT; return; }
-                if (x > w - border && y > h - border) { m.Result = (IntPtr)HTBOTTOMRIGHT; return; }
-                if (x < border) { m.Result = (IntPtr)HTLEFT; return; }
-                if (x > w - border) { m.Result = (IntPtr)HTRIGHT; return; }
-                if (y < border) { m.Result = (IntPtr)HTTOP; return; }
-                if (y > h - border) { m.Result = (IntPtr)HTBOTTOM; return; }
+                if (x < border && y < border) { m.Result = (IntPtr)13; return; }
+                if (x > w - border && y < border) { m.Result = (IntPtr)14; return; }
+                if (x < border && y > h - border) { m.Result = (IntPtr)16; return; }
+                if (x > w - border && y > h - border) { m.Result = (IntPtr)17; return; }
+                if (x < border) { m.Result = (IntPtr)10; return; }
+                if (x > w - border) { m.Result = (IntPtr)11; return; }
+                if (y < border) { m.Result = (IntPtr)12; return; }
+                if (y > h - border) { m.Result = (IntPtr)15; return; }
             }
 
             base.WndProc(ref m);
